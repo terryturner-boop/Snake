@@ -1,0 +1,590 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Google G Snake Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background-color: #0f172a; /* Tailwind slate-900 */
+            color: #f8fafc; /* Tailwind slate-50 */
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden; /* Prevent scrolling on mobile */
+            touch-action: none; /* Prevent swipe-to-refresh on mobile */
+        }
+
+        #game-container {
+            position: relative;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            border-radius: 12px;
+            overflow: hidden;
+            background-color: #1e293b; /* Tailwind slate-800 */
+            border: 4px solid #334155; /* Tailwind slate-700 */
+        }
+
+        canvas {
+            display: block;
+            image-rendering: pixelated; /* Keep pixel art crisp if needed */
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Let clicks pass through to canvas if needed */
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        #score-board {
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 1.25rem;
+            font-weight: bold;
+            background: linear-gradient(to bottom, rgba(15, 23, 42, 0.9), transparent);
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+        }
+
+        #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(15, 23, 42, 0.85); /* Dark semi-transparent background */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            pointer-events: auto; /* Re-enable pointer events for buttons */
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            visibility: hidden;
+        }
+
+        #game-over-screen.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        #mobile-controls {
+            display: none; /* Hidden on desktop by default */
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+            width: 200px;
+        }
+
+        @media (max-width: 768px) {
+            #mobile-controls {
+                display: grid;
+            }
+        }
+
+        .control-btn {
+            background-color: #334155;
+            border: none;
+            color: white;
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            font-size: 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            cursor: pointer;
+            transition: background-color 0.1s, transform 0.1s;
+            user-select: none; /* Prevent text selection on rapid tapping */
+            -webkit-tap-highlight-color: transparent; /* Remove blue flash on mobile tap */
+        }
+
+        .control-btn:active {
+            background-color: #475569;
+            transform: scale(0.95);
+        }
+
+        #btn-up { grid-column: 2; grid-row: 1; }
+        #btn-left { grid-column: 1; grid-row: 2; }
+        #btn-right { grid-column: 3; grid-row: 2; }
+        #btn-down { grid-column: 2; grid-row: 2; }
+
+        @keyframes pulse-gold {
+            0% { transform: scale(1); filter: brightness(1); }
+            50% { transform: scale(1.15); filter: brightness(1.3); }
+            100% { transform: scale(1); filter: brightness(1); }
+        }
+
+        .gold-score-anim {
+            animation: pulse-gold 0.5s ease-in-out;
+            color: #fbbf24 !important; /* Tailwind amber-400 */
+        }
+
+    </style>
+</head>
+<body>
+
+    <h1 class="text-3xl font-bold mb-4 text-center text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-green-400 to-red-400">G-Snake</h1>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="400" height="400"></canvas>
+        
+        <div id="ui-layer">
+            <div id="score-board">
+                <div>Score: <span id="score-val" class="text-yellow-400">0</span></div>
+                <div>High: <span id="highscore-val" class="text-blue-400">0</span></div>
+            </div>
+        </div>
+
+        <div id="game-over-screen">
+            <h2 class="text-4xl font-extrabold text-red-500 mb-2 drop-shadow-md">GAME OVER</h2>
+            <p class="text-xl mb-6">Final Score: <span id="final-score" class="font-bold text-yellow-400">0</span></p>
+            <button id="restart-btn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-8 rounded-full shadow-lg transition-transform transform hover:scale-105 active:scale-95">
+                <i class="fas fa-redo mr-2"></i> Play Again
+            </button>
+        </div>
+    </div>
+
+    <div id="mobile-controls">
+        <button id="btn-up" class="control-btn" data-dir="UP"><i class="fas fa-chevron-up"></i></button>
+        <button id="btn-left" class="control-btn" data-dir="LEFT"><i class="fas fa-chevron-left"></i></button>
+        <button id="btn-down" class="control-btn" data-dir="DOWN"><i class="fas fa-chevron-down"></i></button>
+        <button id="btn-right" class="control-btn" data-dir="RIGHT"><i class="fas fa-chevron-right"></i></button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score-val');
+        const highScoreElement = document.getElementById('highscore-val');
+        const gameOverScreen = document.getElementById('game-over-screen');
+        const finalScoreElement = document.getElementById('final-score');
+        const restartBtn = document.getElementById('restart-btn');
+
+        // Game configuration
+        let gridSize = 20;
+        let tileCount = canvas.width / gridSize;
+        let gameSpeed = 10; // Frames per second
+        
+        // Snake state
+        let snake = [];
+        let snakeLength = 3;
+        let headX = 10;
+        let headY = 10;
+        
+        // Velocity (Direction)
+        let xVelocity = 0;
+        let yVelocity = 0;
+        let pendingXVelocity = 0; // To prevent rapid double-turns causing death
+        let pendingYVelocity = 0;
+
+        // Apple state
+        let appleX = 5;
+        let appleY = 5;
+        let isGoldApple = false;
+        let applesEatenSinceLastGold = 0;
+        
+        // Score state
+        let score = 0;
+        let highScore = localStorage.getItem('snakeHighScore') || 0;
+        highScoreElement.textContent = highScore;
+
+        // Game loop control
+        let gameLoopId;
+        let isGameOver = false;
+
+        // Load the Google G image for the head
+        const headImage = new Image();
+        // Since we cannot load local files directly via file path in standard browsers without a server, 
+        // we assume the image is in the same directory.
+        // We add an error handler to fallback to a drawn G if the image fails to load.
+        headImage.src = 'Google G.png'; 
+        let imageLoaded = false;
+        headImage.onload = () => { imageLoaded = true; };
+        headImage.onerror = () => { 
+            console.warn("Failed to load 'Google G.png'. Using fallback rendering.");
+            imageLoaded = false; 
+        };
+
+        // Initialize game function
+        function initGame() {
+            // Adjust canvas size based on window size for responsiveness
+            const maxCanvasSize = Math.min(window.innerWidth - 40, 500); // Max 500px, keep some margin
+            // Ensure size is a multiple of gridSize
+            const newSize = Math.floor(maxCanvasSize / gridSize) * gridSize;
+            
+            canvas.width = newSize;
+            canvas.height = newSize;
+            tileCount = canvas.width / gridSize;
+
+            resetGame();
+            
+            // Start the game loop
+            clearTimeout(gameLoopId);
+            gameLoop();
+        }
+
+        function resetGame() {
+            snake = [];
+            snakeLength = 3;
+            headX = Math.floor(tileCount / 2);
+            headY = Math.floor(tileCount / 2);
+            
+            // Initial tail
+            for(let i=0; i < snakeLength; i++) {
+                snake.push({x: headX, y: headY + i});
+            }
+
+            xVelocity = 0;
+            yVelocity = -1; // Start moving up
+            pendingXVelocity = 0;
+            pendingYVelocity = -1;
+            
+            score = 0;
+            applesEatenSinceLastGold = 0;
+            isGoldApple = false;
+            updateScoreDisplay();
+            
+            isGameOver = false;
+            gameOverScreen.classList.remove('active');
+            
+            placeApple();
+        }
+
+        function gameLoop() {
+            if (isGameOver) return;
+
+            updateState();
+            
+            if (checkGameOver()) {
+                handleGameOver();
+                return;
+            }
+            
+            clearScreen();
+            drawApple();
+            drawSnake();
+            
+            // Adjust speed slightly as snake grows
+            let currentSpeed = gameSpeed + Math.floor(score / 5);
+            // Cap maximum speed
+            if (currentSpeed > 25) currentSpeed = 25;
+            
+            gameLoopId = setTimeout(gameLoop, 1000 / currentSpeed);
+        }
+
+        function updateState() {
+            // Apply pending velocity
+            xVelocity = pendingXVelocity;
+            yVelocity = pendingYVelocity;
+
+            // Move head
+            headX += xVelocity;
+            headY += yVelocity;
+
+            // Handle screen wrapping (Optional: change to wall death instead)
+            // Currently implemented as passing through walls
+            if (headX < 0) headX = tileCount - 1;
+            if (headX >= tileCount) headX = 0;
+            if (headY < 0) headY = tileCount - 1;
+            if (headY >= tileCount) headY = 0;
+
+            // Add new head position to snake array
+            snake.unshift({x: headX, y: headY});
+
+            // Check if apple is eaten
+            if (headX === appleX && headY === appleY) {
+                if (isGoldApple) {
+                    score += 2; // Double points for gold apple
+                    snakeLength += 2; // Grow by 2 (optional, but feels rewarding)
+                    scoreElement.classList.add('gold-score-anim');
+                    setTimeout(() => scoreElement.classList.remove('gold-score-anim'), 500);
+                } else {
+                    score++;
+                    snakeLength++;
+                    applesEatenSinceLastGold++;
+                }
+                
+                updateScoreDisplay();
+                placeApple();
+            }
+
+            // Remove tail if snake is longer than allowed length
+            while (snake.length > snakeLength) {
+                snake.pop();
+            }
+        }
+
+        function checkGameOver() {
+            // Self-collision check
+            // Start loop from 1 because index 0 is the new head
+            // If the head occupies the same space as any tail segment, it's game over.
+            for (let i = 1; i < snake.length; i++) {
+                if (snake[i].x === headX && snake[i].y === headY) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function handleGameOver() {
+            isGameOver = true;
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('snakeHighScore', highScore);
+                highScoreElement.textContent = highScore;
+            }
+            finalScoreElement.textContent = score;
+            gameOverScreen.classList.add('active');
+        }
+
+        function clearScreen() {
+            ctx.fillStyle = '#1e293b'; // Match container bg
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function drawSnake() {
+            // Draw tail
+            for (let i = 1; i < snake.length; i++) {
+                let part = snake[i];
+                // Gradient color for tail
+                let intensity = 1 - (i / snake.length) * 0.5;
+                ctx.fillStyle = `rgba(59, 130, 246, ${intensity})`; // Tailwind blue-500 fading out
+                
+                // Draw rounded rectangle for body parts
+                let px = part.x * gridSize;
+                let py = part.y * gridSize;
+                let size = gridSize - 2;
+                
+                ctx.beginPath();
+                ctx.roundRect(px + 1, py + 1, size, size, 4);
+                ctx.fill();
+            }
+
+            // Draw Head
+            const hx = snake[0].x * gridSize;
+            const hy = snake[0].y * gridSize;
+
+            if (imageLoaded) {
+                // Draw Google G image
+                ctx.drawImage(headImage, hx, hy, gridSize, gridSize);
+            } else {
+                // Fallback: Draw a stylized 'G' or just a distinct colored square
+                ctx.fillStyle = '#ea4335'; // Google Red
+                ctx.beginPath();
+                ctx.arc(hx + gridSize/2, hy + gridSize/2, gridSize/2 - 1, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // White inner circle
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(hx + gridSize/2, hy + gridSize/2, gridSize/4, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function drawApple() {
+            // Set base color depending on apple type
+            if (isGoldApple) {
+                // Gold color with a subtle radial gradient effect for shininess
+                let gradient = ctx.createRadialGradient(
+                    appleX * gridSize + gridSize/3, 
+                    appleY * gridSize + gridSize/3, 
+                    2, 
+                    appleX * gridSize + gridSize/2, 
+                    appleY * gridSize + gridSize/2, 
+                    gridSize/2
+                );
+                gradient.addColorStop(0, '#fef08a'); // yellow-200
+                gradient.addColorStop(0.7, '#eab308'); // yellow-500
+                gradient.addColorStop(1, '#a16207'); // yellow-800
+                ctx.fillStyle = gradient;
+            } else {
+                ctx.fillStyle = '#ef4444'; // Tailwind red-500
+            }
+            
+            // Draw an apple shape (circle with a small stem)
+            let ax = appleX * gridSize + gridSize/2;
+            let ay = appleY * gridSize + gridSize/2;
+            let radius = gridSize/2 - 2;
+            
+            ctx.beginPath();
+            ctx.arc(ax, ay, radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Stem
+            ctx.fillStyle = isGoldApple ? '#166534' : '#22c55e'; // Darker green stem for gold
+            ctx.fillRect(ax - 2, ay - radius - 3, 4, 4);
+        }
+
+        function placeApple() {
+            let validLocation = false;
+            
+            // Determine if this should be a gold apple
+            // Chance increases after eating a few normal apples
+            if (!isGoldApple && applesEatenSinceLastGold >= 4) {
+                // 30% chance for a gold apple after eating 4 normal ones
+                if (Math.random() < 0.3) {
+                    isGoldApple = true;
+                    applesEatenSinceLastGold = 0; // Reset counter
+                } else {
+                    isGoldApple = false;
+                }
+            } else {
+                isGoldApple = false;
+            }
+
+            while (!validLocation) {
+                // Ensure apple coordinates are within the tileCount boundaries
+                appleX = Math.floor(Math.random() * Math.floor(tileCount));
+                appleY = Math.floor(Math.random() * Math.floor(tileCount));
+                
+                // Ensure apple doesn't spawn on the snake
+                validLocation = true;
+                for (let part of snake) {
+                    if (part.x === appleX && part.y === appleY) {
+                        validLocation = false;
+                        break;
+                    }
+                }
+            }
+        }
+
+        function updateScoreDisplay() {
+            scoreElement.textContent = score;
+            // Pop effect
+            scoreElement.style.transform = 'scale(1.5)';
+            setTimeout(() => {
+                scoreElement.style.transform = 'scale(1)';
+                scoreElement.style.transition = 'transform 0.2s';
+            }, 50);
+        }
+
+        // Input handling function to prevent 180-degree turns
+        function changeDirection(newDir) {
+            if (isGameOver) return;
+            
+            // Prevent changing direction immediately after another change in the same tick
+            // and prevent reversing direction directly
+            if (newDir === 'UP' && yVelocity !== 1) {
+                pendingXVelocity = 0;
+                pendingYVelocity = -1;
+            }
+            if (newDir === 'DOWN' && yVelocity !== -1) {
+                pendingXVelocity = 0;
+                pendingYVelocity = 1;
+            }
+            if (newDir === 'LEFT' && xVelocity !== 1) {
+                pendingXVelocity = -1;
+                pendingYVelocity = 0;
+            }
+            if (newDir === 'RIGHT' && xVelocity !== -1) {
+                pendingXVelocity = 1;
+                pendingYVelocity = 0;
+            }
+        }
+
+        // Keyboard controls
+        document.body.addEventListener('keydown', (e) => {
+            // Prevent default scrolling when playing
+            if(["Space","ArrowUp","ArrowDown","ArrowLeft","ArrowRight"].indexOf(e.code) > -1) {
+                e.preventDefault();
+            }
+
+            if (e.key === 'ArrowUp' || e.key === 'w') changeDirection('UP');
+            if (e.key === 'ArrowDown' || e.key === 's') changeDirection('DOWN');
+            if (e.key === 'ArrowLeft' || e.key === 'a') changeDirection('LEFT');
+            if (e.key === 'ArrowRight' || e.key === 'd') changeDirection('RIGHT');
+            
+            if (e.key === 'Enter' && isGameOver) {
+                resetGame();
+                gameLoop();
+            }
+        });
+
+        // Mobile button controls
+        document.querySelectorAll('.control-btn').forEach(btn => {
+            // Use pointerdown for better responsiveness on touch devices than click
+            btn.addEventListener('pointerdown', (e) => {
+                e.preventDefault(); // Prevent double firing on some devices
+                changeDirection(btn.dataset.dir);
+            });
+        });
+
+        // Swipe controls implementation for canvas area
+        let touchStartX = 0;
+        let touchStartY = 0;
+        
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+            touchStartY = e.changedTouches[0].screenY;
+        }, {passive: false});
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault(); // Prevent scrolling while swiping on canvas
+        }, {passive: false});
+
+        canvas.addEventListener('touchend', (e) => {
+            let touchEndX = e.changedTouches[0].screenX;
+            let touchEndY = e.changedTouches[0].screenY;
+            handleSwipe(touchStartX, touchStartY, touchEndX, touchEndY);
+        });
+
+        function handleSwipe(startX, startY, endX, endY) {
+            const dx = endX - startX;
+            const dy = endY - startY;
+            const absDx = Math.abs(dx);
+            const absDy = Math.abs(dy);
+
+            // Need a minimum distance to register a swipe
+            if (Math.max(absDx, absDy) > 30) {
+                if (absDx > absDy) {
+                    // Horizontal swipe
+                    if (dx > 0) changeDirection('RIGHT');
+                    else changeDirection('LEFT');
+                } else {
+                    // Vertical swipe
+                    if (dy > 0) changeDirection('DOWN');
+                    else changeDirection('UP');
+                }
+            }
+        }
+
+        // Restart button
+        restartBtn.addEventListener('click', () => {
+            resetGame();
+            gameLoop();
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (!isGameOver) {
+                // Pause temporarily during resize might be good, but for now just re-init canvas size
+                // However, re-initing size while playing can be jarring. 
+                // We'll only re-init size if the game is over, or let it scale via CSS if possible.
+                // For a robust implementation, it's better to maintain internal logic resolution 
+                // and scale the canvas element CSS, but here we update the actual canvas size on init.
+            }
+        });
+
+        window.onload = () => {
+            initGame();
+        };
+
+    </script>
+</body>
+</html>
